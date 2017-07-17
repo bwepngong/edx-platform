@@ -5,12 +5,12 @@ export class CourseHome {  // eslint-disable-line import/prefer-default-export
     // Logging for course tool click events
     const $courseToolLink = $(options.courseToolLink);
     $courseToolLink.on('click', () => {
-      const courseToolName = this.text().trim().toLowerCase();
+      const courseToolName = document.querySelector('.course-tool-link').text.trim().toLowerCase();
       Logger.log(
         'edx.course.home.course_tool.accessed',
         {
           tool_name: courseToolName,
-        }
+        },
       );
     });
   }

@@ -15,8 +15,14 @@ describe('Course Home factory', () => {
     });
 
     it('sends an event when an course tool is clicked', () => {
-      $('.course-tool-link').click();
-      expect(Logger.log).toHaveBeenCalledWith('edx.course.home.course_tool.accessed');
+      document.querySelector('.course-tool-link').dispatchEvent(new Event('click'));
+      const toolName = document.querySelector('.course-tool-link').text.trim().toLowerCase();
+      expect(Logger.log).toHaveBeenCalledWith(
+          'edx.course.home.course_tool.accessed',
+          {
+            tool_name: toolName,
+          }
+      );
     });
   });
 });
