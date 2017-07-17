@@ -38,11 +38,12 @@ class HelperMethods(object):
     """
     Mixin that provides useful methods for Group Configuration tests.
     """
-    def _create_content_experiment(self, cid=-1, name_suffix='', special_characters=''):
+    def _create_content_experiment(self, cid=-1, group_id=None, name_suffix='', special_characters=''):
         """
         Create content experiment.
 
         Assign Group Configuration to the experiment if cid is provided.
+        Assigns a problem to the first group in the split test if group_id is provided.
         """
         sequential = ItemFactory.create(
             category='sequential',
@@ -70,7 +71,7 @@ class HelperMethods(object):
             display_name="Condition 0 vertical",
             location=c0_url,
         )
-        ItemFactory.create(
+        c1_vertical = ItemFactory.create(
             parent_location=split_test.location,
             category="vertical",
             display_name="Condition 1 vertical",
@@ -83,6 +84,26 @@ class HelperMethods(object):
             location=c2_url,
         )
 
+        problem = None
+        if group_id:
+            problem = ItemFactory.create(
+                category='problem',
+                parent_location=c1_vertical.location,
+                display_name=u"Test Problem"
+            )
+
+            group_access_content = {'group_access': {cid: [group_id]}}
+            self.client.ajax_post(
+                reverse_usage_url("xblock_handler", problem.location),
+                data={'metadata': group_access_content}
+            )
+            self.client.ajax_post(
+                reverse_usage_url("xblock_handler", split_test.location),
+                data={'metadata': group_access_content}
+            )
+
+            c1_vertical.children.append(problem.location)
+
         partitions_json = [p.to_json() for p in self.course.user_partitions]
 
         self.client.ajax_post(
@@ -91,7 +112,7 @@ class HelperMethods(object):
         )
 
         self.save_course()
-        return (vertical, split_test)
+        return vertical, split_test, problem
 
     def _create_problem_with_content_group(self, cid, group_id, name_suffix='', special_characters='', orphan=False):
         """
@@ -771,12 +792,69 @@ class GroupConfigurationsUsageInfoTestCase(CourseTestCase, HelperMethods):
         }]
         self.assertEqual(actual, expected)
 
+    def test_can_get_correct_usage_info_for_split_test(self):
+        """
+        When a split test is created and content group access is set for a problem within a group,
+        the usage info should return a url to the split test, not to the group.
+        """
+        group_id = 1
+        self._add_user_partitions(count=1, scheme_id='cohort')
+        __, split_test, problem = self._create_content_experiment(cid=0, name_suffix='0', group_id=group_id)
+
+        expected = self._get_expected_content_group(
+            usage_for_group=[
+                {
+                    'url': '/container/{}'.format(split_test.location),
+                    'label': 'Condition 1 vertical / Test Problem'
+                },
+                {
+                    'url': '/container/{}'.format(split_test.location),
+                    'label': 'Test Unit 0 / Test Content Experiment 0'
+                }
+            ]
+        )
+
+        actual = self._get_user_partition('cohort')
+
+        self.assertEqual(actual, expected)
+
+    def test_can_get_correct_usage_info_for_unit(self):
+        """
+        When group access is set on the unit level, the usage info should return a url to the unit, not
+        the sequential parent of the unit.
+        """
+        self._add_user_partitions(count=1, scheme_id='cohort')
+        vertical, __ = self._create_problem_with_content_group(
+            cid=0, group_id=1, name_suffix='0'
+        )
+
+        self.client.ajax_post(
+            reverse_usage_url("xblock_handler", vertical.location),
+            data={'metadata': {'group_access': {0: [1]}}}
+        )
+
+        actual = self._get_user_partition('cohort')
+        expected = self._get_expected_content_group(
+            usage_for_group=[
+                {
+                    'url': u"/container/{}".format(vertical.location),
+                    'label': u"Test Subsection 0 / Test Unit 0"
+                },
+                {
+                    'url': u"/container/{}".format(vertical.location),
+                    'label': u"Test Unit 0 / Test Problem 0"
+                }
+            ]
+        )
+
+        self.assertEqual(actual, expected)
+
     def test_can_get_correct_usage_info(self):
         """
         Test if group configurations json updated successfully with usage information.
         """
         self._add_user_partitions(count=2)
-        __, split_test = self._create_content_experiment(cid=0, name_suffix='0')
+        __, split_test, __ = self._create_content_experiment(cid=0, name_suffix='0')
         self._create_content_experiment(name_suffix='1')
 
         actual = GroupConfiguration.get_split_test_partitions_with_usage(self.store, self.course)
@@ -823,7 +901,7 @@ class GroupConfigurationsUsageInfoTestCase(CourseTestCase, HelperMethods):
          characters are being used in content experiment
         """
         self._add_user_partitions(count=1)
-        __, split_test = self._create_content_experiment(cid=0, name_suffix='0', special_characters=u"JOSÉ ANDRÉS")
+        __, split_test, __ = self._create_content_experiment(cid=0, name_suffix='0', special_characters=u"JOSÉ ANDRÉS")
 
         actual = GroupConfiguration.get_split_test_partitions_with_usage(self.store, self.course, )
 
@@ -855,8 +933,8 @@ class GroupConfigurationsUsageInfoTestCase(CourseTestCase, HelperMethods):
         group configuration.
         """
         self._add_user_partitions()
-        __, split_test = self._create_content_experiment(cid=0, name_suffix='0')
-        __, split_test1 = self._create_content_experiment(cid=0, name_suffix='1')
+        __, split_test, __ = self._create_content_experiment(cid=0, name_suffix='0')
+        __, split_test1, __ = self._create_content_experiment(cid=0, name_suffix='1')
 
         actual = GroupConfiguration.get_split_test_partitions_with_usage(self.store, self.course)
 
