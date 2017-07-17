@@ -15,7 +15,7 @@ describe('Course Home factory', () => {
     });
 
     it('sends an event when an course tool is clicked', () => {
-      document.querySelector('.course-tool-link').dispatchEvent(new Event('click'));
+      $('.course-tool-link').click();
       expect(Logger.log).toHaveBeenCalledWith('edx.course.home.course_tool.accessed');
     });
   });
