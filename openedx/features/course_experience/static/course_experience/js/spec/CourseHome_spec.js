@@ -4,9 +4,11 @@ import { CourseHome } from '../CourseHome';
 
 describe('Course Home factory', () => {
   describe('Ensure course tool click logging', () => {
+    let home; // eslint-disable-line no-unused-vars
+
     beforeEach(() => {
       loadFixtures('course_experience/fixtures/course-home-fragment.html');
-      const home = new CourseHome({
+      home = new CourseHome({
         courseToolLink: '.course-tool-link',
       });
       spyOn(Logger, 'log');
