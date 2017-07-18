@@ -53,7 +53,7 @@ class LanguagePreferenceMiddleware(object):
     def process_response(self, request, response):
         # If the user is logged in, check for their language preference. Also check for real user
         # if current user is a masquerading user,
-        current_user = getattr(request.user, 'real_user', None) or request.user
+        current_user = getattr(request.user, 'real_user', request.user)
         if current_user and current_user.is_authenticated():
             user_pref = None
             anonymous_cookie_lang = getattr(request, '_anonymous_user_cookie_lang', None)
