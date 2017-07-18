@@ -5,11 +5,11 @@ Middleware for Language Preferences
 from django.conf import settings
 from django.utils.translation import LANGUAGE_SESSION_KEY
 from django.utils.translation.trans_real import parse_accept_lang_header
+from lms.djangoapps.courseware.masquerade import MASQUERADE_SETTINGS_KEY
 
 from openedx.core.djangoapps.lang_pref import COOKIE_DURATION, LANGUAGE_HEADER, LANGUAGE_KEY
 from openedx.core.djangoapps.user_api.errors import UserAPIInternalError, UserAPIRequestError
 from openedx.core.djangoapps.user_api.preferences.api import (
-    delete_user_preference,
     get_user_preference,
     set_user_preference
 )
@@ -67,15 +67,16 @@ class LanguagePreferenceMiddleware(object):
                     # If we can't find the user preferences, then don't modify the cookie
                     pass
 
-            # If set, set the user_pref in the LANGUAGE_COOKIE
-            if user_pref:
+            # If set and user is not a masquerading user, set the user_pref in the LANGUAGE_COOKIE
+            is_masquerading_user = request.session.get(MASQUERADE_SETTINGS_KEY, {})
+            if user_pref and not is_masquerading_user:
                 response.set_cookie(
                     settings.LANGUAGE_COOKIE,
                     value=user_pref,
                     domain=settings.SESSION_COOKIE_DOMAIN,
                     max_age=COOKIE_DURATION,
                 )
-            else:
+            elif not user_pref:
                 response.delete_cookie(
                     settings.LANGUAGE_COOKIE,
                     domain=settings.SESSION_COOKIE_DOMAIN
