@@ -51,32 +51,32 @@ class LanguagePreferenceMiddleware(object):
                 del request.session[LANGUAGE_SESSION_KEY]
 
     def process_response(self, request, response):
-        # If the user is logged in, check for their language preference
-        if getattr(request, 'user', None) and request.user.is_authenticated():
+        # If the user is logged in, check for their language preference. Also check for real user
+        # if current user is a masquerading user,
+        current_user = getattr(request.user, 'real_user', None) or request.user
+        if current_user and current_user.is_authenticated():
             user_pref = None
-
             anonymous_cookie_lang = getattr(request, '_anonymous_user_cookie_lang', None)
             if anonymous_cookie_lang:
                 user_pref = anonymous_cookie_lang
-                set_user_preference(request.user, LANGUAGE_KEY, anonymous_cookie_lang)
+                set_user_preference(current_user, LANGUAGE_KEY, anonymous_cookie_lang)
             else:
                 # Get the user's language preference
                 try:
-                    user_pref = get_user_preference(request.user, LANGUAGE_KEY)
+                    user_pref = get_user_preference(current_user, LANGUAGE_KEY)
                 except (UserAPIRequestError, UserAPIInternalError):
                     # If we can't find the user preferences, then don't modify the cookie
                     pass
 
-            # If set and user is not a masquerading user, set the user_pref in the LANGUAGE_COOKIE
-            is_masquerading_user = request.session.get(MASQUERADE_SETTINGS_KEY, {})
-            if user_pref and not is_masquerading_user:
+            # If set, set the user_pref in the LANGUAGE_COOKIE
+            if user_pref:
                 response.set_cookie(
                     settings.LANGUAGE_COOKIE,
                     value=user_pref,
                     domain=settings.SESSION_COOKIE_DOMAIN,
                     max_age=COOKIE_DURATION,
                 )
-            elif not user_pref:
+            else:
                 response.delete_cookie(
                     settings.LANGUAGE_COOKIE,
                     domain=settings.SESSION_COOKIE_DOMAIN
