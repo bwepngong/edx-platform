@@ -38,12 +38,13 @@ class HelperMethods(object):
     """
     Mixin that provides useful methods for Group Configuration tests.
     """
-    def _create_content_experiment(self, cid=-1, group_id=None, name_suffix='', special_characters=''):
+    def _create_content_experiment(self, cid=-1, group_id=None, cid_for_problem=None,
+                                   name_suffix='', special_characters=''):
         """
         Create content experiment.
 
         Assign Group Configuration to the experiment if cid is provided.
-        Assigns a problem to the first group in the split test if group_id is provided.
+        Assigns a problem to the first group in the split test if group_id and cid_for_problem is provided.
         """
         sequential = ItemFactory.create(
             category='sequential',
@@ -85,23 +86,16 @@ class HelperMethods(object):
         )
 
         problem = None
-        if group_id:
+        if group_id and cid_for_problem:
             problem = ItemFactory.create(
                 category='problem',
                 parent_location=c1_vertical.location,
                 display_name=u"Test Problem"
             )
-
-            group_access_content = {'group_access': {cid: [group_id]}}
             self.client.ajax_post(
                 reverse_usage_url("xblock_handler", problem.location),
-                data={'metadata': group_access_content}
+                data={'metadata': {'group_access': {cid_for_problem: [group_id]}}}
             )
-            self.client.ajax_post(
-                reverse_usage_url("xblock_handler", split_test.location),
-                data={'metadata': group_access_content}
-            )
-
             c1_vertical.children.append(problem.location)
 
         partitions_json = [p.to_json() for p in self.course.user_partitions]
@@ -797,23 +791,41 @@ class GroupConfigurationsUsageInfoTestCase(CourseTestCase, HelperMethods):
         When a split test is created and content group access is set for a problem within a group,
         the usage info should return a url to the split test, not to the group.
         """
-        group_id = 1
-        self._add_user_partitions(count=1, scheme_id='cohort')
-        __, split_test, problem = self._create_content_experiment(cid=0, name_suffix='0', group_id=group_id)
+        # Create user partition for groups in the split test,
+        # and another partition to set group access for the problem within the split test.
+        self._add_user_partitions(count=1)
+        self.course.user_partitions += [
+            UserPartition(
+                id=1,
+                name='Cohort User Partition',
+                scheme=UserPartition.get_scheme('cohort'),
+                description='Cohort User Partition',
+                groups=[
+                    Group(id=3, name="Problem Group")
+                ],
+            ),
+        ]
+        self.store.update_item(self.course, ModuleStoreEnum.UserID.test)
 
-        expected = self._get_expected_content_group(
-            usage_for_group=[
-                {
-                    'url': '/container/{}'.format(split_test.location),
-                    'label': 'Condition 1 vertical / Test Problem'
-                },
-                {
-                    'url': '/container/{}'.format(split_test.location),
-                    'label': 'Test Unit 0 / Test Content Experiment 0'
-                }
-            ]
-        )
+        __, split_test, problem = self._create_content_experiment(cid=0, name_suffix='0', group_id=3, cid_for_problem=1)
 
+        expected = {
+            'id': 1,
+            'name': 'Cohort User Partition',
+            'scheme': 'cohort',
+            'description': 'Cohort User Partition',
+            'version': UserPartition.VERSION,
+            'groups': [
+                {'id': 3, 'name': 'Problem Group', 'version': 1, 'usage': [
+                    {
+                        'url': '/container/{}'.format(split_test.location),
+                        'label': 'Condition 1 vertical / Test Problem'
+                    }
+                ]},
+            ],
+            u'parameters': {},
+            u'active': True,
+        }
         actual = self._get_user_partition('cohort')
 
         self.assertEqual(actual, expected)
@@ -823,29 +835,50 @@ class GroupConfigurationsUsageInfoTestCase(CourseTestCase, HelperMethods):
         When group access is set on the unit level, the usage info should return a url to the unit, not
         the sequential parent of the unit.
         """
-        self._add_user_partitions(count=1, scheme_id='cohort')
+        self.course.user_partitions = [
+            UserPartition(
+                id=0,
+                name='User Partition',
+                scheme=UserPartition.get_scheme('cohort'),
+                description='User Partition',
+                groups=[
+                    Group(id=0, name="Group")
+                ],
+            ),
+        ]
         vertical, __ = self._create_problem_with_content_group(
-            cid=0, group_id=1, name_suffix='0'
+            cid=0, group_id=0, name_suffix='0'
         )
 
         self.client.ajax_post(
             reverse_usage_url("xblock_handler", vertical.location),
-            data={'metadata': {'group_access': {0: [1]}}}
+            data={'metadata': {'group_access': {0: [0]}}}
         )
 
         actual = self._get_user_partition('cohort')
-        expected = self._get_expected_content_group(
-            usage_for_group=[
-                {
-                    'url': u"/container/{}".format(vertical.location),
-                    'label': u"Test Subsection 0 / Test Unit 0"
-                },
-                {
-                    'url': u"/container/{}".format(vertical.location),
-                    'label': u"Test Unit 0 / Test Problem 0"
-                }
-            ]
-        )
+        expected = {
+            'id': 0,
+            'name': 'User Partition',
+            'scheme': 'cohort',
+            'description': 'User Partition',
+            'version': UserPartition.VERSION,
+            'groups': [
+                {'id': 0, 'name': 'Group', 'version': 1, 'usage': [
+                    {
+                        'url': u"/container/{}".format(vertical.location),
+                        'label': u"Test Subsection 0 / Test Unit 0"
+                    },
+                    {
+                        'url': u"/container/{}".format(vertical.location),
+                        'label': u"Test Unit 0 / Test Problem 0"
+                    }
+                ]},
+            ],
+            u'parameters': {},
+            u'active': True,
+        }
+
+        self.maxDiff = None
 
         self.assertEqual(actual, expected)
 
