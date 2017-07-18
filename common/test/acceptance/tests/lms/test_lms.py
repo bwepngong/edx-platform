@@ -6,6 +6,7 @@ import urllib
 from datetime import datetime, timedelta
 from textwrap import dedent
 from unittest import skip
+from flaky import flaky
 
 import pytz
 from bok_choy.promise import EmptyPromise
@@ -563,6 +564,7 @@ class CourseWikiTest(UniqueCourseTest):
         self.course_wiki_edit_page.wait_for_page()
 
     @attr(shard=1)
+    @flaky(max_runs=30, min_passes=30)
     def test_edit_course_wiki(self):
         """
         Wiki page by default is editable for students.
